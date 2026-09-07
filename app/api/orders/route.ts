@@ -1,5 +1,7 @@
 import { auth } from "@/auth";
+
 import { createOrderFromCart } from "@/lib/services/order-service";
+
 import { orderSchema } from "@/lib/validation/order-schema";
 
 export async function POST(request: Request) {
@@ -15,7 +17,18 @@ if (!session?.user?.id) {
     );
 }
 
-const body = await request.json();
+let body: unknown;
+
+try {
+    body = await request.json();
+} catch {
+    return Response.json(
+    {
+        error: "Invalid JSON request body.",
+    },
+    { status: 400 }
+    );
+}
 
 const validation = orderSchema.safeParse(body);
 
@@ -52,16 +65,13 @@ if (error instanceof Error) {
 
     if (error.message.includes("was not found.")) {
     return Response.json(
-        { error: error.message },
+        { error: "One or more products in your cart are unavailable." },
         { status: 400 }
     );
     }
 
     if (error.message === "Invalid product price.") {
-    console.error(
-        "Invalid product price:",
-        error
-    );
+    console.error("Invalid product price:", error);
 
     return Response.json(
         { error: "Failed to create order." },
@@ -70,10 +80,7 @@ if (error instanceof Error) {
     }
 
     if (error.message === "Invalid order total.") {
-    console.error(
-        "Invalid order total:",
-        error
-    );
+    console.error("Invalid order total:", error);
 
     return Response.json(
         { error: "Failed to create order." },
@@ -82,10 +89,7 @@ if (error instanceof Error) {
     }
 }
 
-console.error(
-    "Order creation error:",
-    error
-);
+console.error("Order creation error:", error);
 
 return Response.json(
     {
