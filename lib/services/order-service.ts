@@ -26,9 +26,7 @@ function validateCustomer(
 customer: CustomerInfo | undefined
 ): CustomerInfo {
 if (!customer) {
-throw new Error(
-    "Complete customer information is required."
-);
+throw new Error("Complete customer information is required.");
 }
 
 if (
@@ -43,9 +41,7 @@ customer.city.trim() === "" ||
 typeof customer.postal !== "string" ||
 customer.postal.trim() === ""
 ) {
-throw new Error(
-    "Complete customer information is required."
-);
+throw new Error("Complete customer information is required.");
 }
 
 return customer;
@@ -100,9 +96,7 @@ if (
 const product = await getProductById(productId);
 
 if (!product) {
-    throw new Error(
-    `Product ${productId} was not found.`
-    );
+    throw new Error(`Product ${productId} was not found.`);
 }
 
 const price = Number(product.price);
