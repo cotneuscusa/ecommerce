@@ -1,9 +1,14 @@
 import { auth } from "@/auth";
+
 import {
 getCart,
 saveCart,
 clearCart,
 } from "@/lib/repositories/cart";
+
+import { getProductById } from "@/lib/repositories/products";
+
+import type { Product } from "@/lib/types";
 
 const MAX_ITEM_QUANTITY = 100;
 
@@ -69,6 +74,11 @@ const items = body.items;
 
 const productIds = new Set<number>();
 
+const savedItems: {
+    product: Product;
+    quantity: number;
+}[] = [];
+
 for (const item of items) {
     if (
     !item ||
@@ -95,23 +105,7 @@ for (const item of items) {
     typeof product.id !== "number" ||
     !Number.isInteger(product.id) ||
     product.id <= 0 ||
-    productIds.has(product.id) ||
-    !("name" in product) ||
-    typeof product.name !== "string" ||
-    product.name.trim() === "" ||
-    !("description" in product) ||
-    typeof product.description !== "string" ||
-    product.description.trim() === "" ||
-    !("price" in product) ||
-    typeof product.price !== "number" ||
-    !Number.isFinite(product.price) ||
-    product.price < 0 ||
-    !("image" in product) ||
-    typeof product.image !== "string" ||
-    product.image.trim() === "" ||
-    !("category" in product) ||
-    typeof product.category !== "string" ||
-    product.category.trim() === ""
+    productIds.has(product.id)
     ) {
     return Response.json(
         { error: "Invalid cart item." },
@@ -120,14 +114,67 @@ for (const item of items) {
     }
 
     productIds.add(product.id);
+
+    const databaseProduct = await getProductById(
+    String(product.id)
+    );
+
+    if (!databaseProduct) {
+    return Response.json(
+        {
+        error: "One or more products in your cart are unavailable.",
+        },
+        { status: 400 }
+    );
+    }
+
+    const databaseProductId = Number(databaseProduct.id);
+    const databasePrice = Number(databaseProduct.price);
+
+    if (
+    !Number.isInteger(databaseProductId) ||
+    databaseProductId <= 0 ||
+    !Number.isFinite(databasePrice) ||
+    databasePrice < 0 ||
+    typeof databaseProduct.name !== "string" ||
+    databaseProduct.name.trim() === "" ||
+    typeof databaseProduct.description !== "string" ||
+    databaseProduct.description.trim() === "" ||
+    typeof databaseProduct.image !== "string" ||
+    databaseProduct.image.trim() === "" ||
+    typeof databaseProduct.category !== "string" ||
+    databaseProduct.category.trim() === ""
+    ) {
+    console.error(
+        "Invalid product data in database:",
+        databaseProduct
+    );
+
+    return Response.json(
+        { error: "Failed to save cart." },
+        { status: 500 }
+    );
+    }
+
+    savedItems.push({
+    product: {
+        id: databaseProductId,
+        name: databaseProduct.name,
+        description: databaseProduct.description,
+        price: databasePrice,
+        image: databaseProduct.image,
+        category: databaseProduct.category,
+    },
+    quantity: item.quantity,
+    });
 }
 
-const savedItems = await saveCart(
+const result = await saveCart(
     session.user.id,
-    items as Parameters<typeof saveCart>[1]
+    savedItems
 );
 
-return Response.json(savedItems);
+return Response.json(result);
 } catch (error) {
 console.error("Cart PUT error:", error);
 
