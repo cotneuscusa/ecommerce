@@ -1,9 +1,14 @@
 import { auth } from "@/auth";
+
 import {
 getWishlist,
 saveWishlist,
 clearWishlist,
 } from "@/lib/repositories/wishlist";
+
+import { getProductById } from "@/lib/repositories/products";
+
+import type { Product } from "@/lib/types";
 
 export async function GET() {
 try {
@@ -65,6 +70,7 @@ if (
 
 const products = body.products;
 const productIds = new Set<number>();
+const savedProducts: Product[] = [];
 
 for (const product of products) {
     if (
@@ -74,23 +80,7 @@ for (const product of products) {
     typeof product.id !== "number" ||
     !Number.isInteger(product.id) ||
     product.id <= 0 ||
-    productIds.has(product.id) ||
-    !("name" in product) ||
-    typeof product.name !== "string" ||
-    product.name.trim() === "" ||
-    !("description" in product) ||
-    typeof product.description !== "string" ||
-    product.description.trim() === "" ||
-    !("price" in product) ||
-    typeof product.price !== "number" ||
-    !Number.isFinite(product.price) ||
-    product.price < 0 ||
-    !("image" in product) ||
-    typeof product.image !== "string" ||
-    product.image.trim() === "" ||
-    !("category" in product) ||
-    typeof product.category !== "string" ||
-    product.category.trim() === ""
+    productIds.has(product.id)
     ) {
     return Response.json(
         { error: "Invalid wishlist product." },
@@ -99,14 +89,65 @@ for (const product of products) {
     }
 
     productIds.add(product.id);
+
+    const databaseProduct = await getProductById(
+    String(product.id)
+    );
+
+    if (!databaseProduct) {
+    return Response.json(
+        {
+        error:
+            "One or more products in your wishlist are unavailable.",
+        },
+        { status: 400 }
+    );
+    }
+
+    const databaseProductId = Number(databaseProduct.id);
+    const databasePrice = Number(databaseProduct.price);
+
+    if (
+    !Number.isInteger(databaseProductId) ||
+    databaseProductId <= 0 ||
+    !Number.isFinite(databasePrice) ||
+    databasePrice < 0 ||
+    typeof databaseProduct.name !== "string" ||
+    databaseProduct.name.trim() === "" ||
+    typeof databaseProduct.description !== "string" ||
+    databaseProduct.description.trim() === "" ||
+    typeof databaseProduct.image !== "string" ||
+    databaseProduct.image.trim() === "" ||
+    typeof databaseProduct.category !== "string" ||
+    databaseProduct.category.trim() === ""
+    ) {
+    console.error(
+        "Invalid product data in database:",
+        databaseProduct
+    );
+
+    return Response.json(
+        { error: "Failed to save wishlist." },
+        { status: 500 }
+    );
+    }
+
+    savedProducts.push({
+    id: databaseProductId,
+    name: databaseProduct.name,
+    description: databaseProduct.description,
+    price: databasePrice,
+    image: databaseProduct.image,
+    category: databaseProduct.category,
+    });
 }
 
-const savedProducts = await saveWishlist(
+const saved = await saveWishlist(
     session.user.id,
-    products as Parameters<typeof saveWishlist>[1]
+    savedProducts
 );
 
-return Response.json(savedProducts);
+return Response.json(saved);
 } catch (error) {
 console.error("Wishlist PUT error:", error);
 
