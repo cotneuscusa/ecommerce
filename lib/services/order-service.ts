@@ -1,4 +1,5 @@
 import { getProductById } from "@/lib/repositories/products";
+
 import {
 createOrderAndClearCart,
 type Order,
@@ -50,13 +51,26 @@ throw new Error(
 return customer;
 }
 
+function toCents(price: number): number {
+if (!Number.isFinite(price) || price < 0) {
+throw new Error("Invalid product price.");
+}
+
+const cents = Math.round(price * 100);
+
+if (!Number.isSafeInteger(cents)) {
+throw new Error("Invalid product price.");
+}
+
+return cents;
+}
+
 export async function createOrderFromCart(
 input: CreateOrderInput
 ): Promise<Order> {
 const { userId, customer } = input;
 
-const validCustomer =
-validateCustomer(customer);
+const validCustomer = validateCustomer(customer);
 
 const items = await getCart(userId);
 
@@ -71,10 +85,7 @@ if (!item || typeof item !== "object") {
     throw new Error("Invalid order item.");
 }
 
-const productId = String(
-    item.product?.id ?? ""
-);
-
+const productId = String(item.product?.id ?? "");
 const quantity = Number(item.quantity);
 
 if (
@@ -86,8 +97,7 @@ if (
     throw new Error("Invalid order item.");
 }
 
-const product =
-    await getProductById(productId);
+const product = await getProductById(productId);
 
 if (!product) {
     throw new Error(
@@ -97,11 +107,7 @@ if (!product) {
 
 const price = Number(product.price);
 
-if (!Number.isFinite(price) || price < 0) {
-    throw new Error(
-    "Invalid product price."
-    );
-}
+toCents(price);
 
 verifiedItems.push({
     product: {
@@ -114,17 +120,30 @@ verifiedItems.push({
 });
 }
 
-const total = verifiedItems.reduce(
-(sum, item) =>
-    sum +
-    item.product.price * item.quantity,
+const totalCents = verifiedItems.reduce(
+(sum, item) => {
+    const priceCents = toCents(item.product.price);
+    const itemTotalCents = priceCents * item.quantity;
+
+    if (!Number.isSafeInteger(itemTotalCents)) {
+    throw new Error("Invalid order total.");
+    }
+
+    const newTotal = sum + itemTotalCents;
+
+    if (!Number.isSafeInteger(newTotal)) {
+    throw new Error("Invalid order total.");
+    }
+
+    return newTotal;
+},
 0
 );
 
+const total = totalCents / 100;
+
 if (!Number.isFinite(total) || total < 0) {
-throw new Error(
-    "Invalid order total."
-);
+throw new Error("Invalid order total.");
 }
 
 const order: Order = {
@@ -133,22 +152,16 @@ userId,
 
 customer: {
     name: validCustomer.name.trim(),
-    email:
-    validCustomer.email
-        .trim()
-        .toLowerCase(),
-    address:
-    validCustomer.address.trim(),
+    email: validCustomer.email.trim().toLowerCase(),
+    address: validCustomer.address.trim(),
     city: validCustomer.city.trim(),
-    postal:
-    validCustomer.postal.trim(),
+    postal: validCustomer.postal.trim(),
 },
 
 items: verifiedItems,
 total,
 status: "pending",
-createdAt:
-    new Date().toISOString(),
+createdAt: new Date().toISOString(),
 };
 
 return createOrderAndClearCart(order);

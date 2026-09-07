@@ -36,9 +36,97 @@ status: string;
 createdAt: string;
 };
 
+function validateOrder(order: Order): void {
+if (!order || typeof order !== "object") {
+    throw new Error("Invalid order.");
+}
+
+if (
+    typeof order.id !== "string" ||
+    order.id.trim() === ""
+) {
+    throw new Error("Invalid order ID.");
+}
+
+if (
+    typeof order.userId !== "string" ||
+    order.userId.trim() === ""
+) {
+    throw new Error("Invalid user ID.");
+}
+
+if (!Array.isArray(order.items) || order.items.length === 0) {
+    throw new Error("Order must contain at least one item.");
+}
+
+if (
+    !Number.isFinite(order.total) ||
+    order.total < 0
+) {
+    throw new Error("Invalid order total.");
+}
+
+if (
+    typeof order.status !== "string" ||
+    order.status.trim() === ""
+) {
+    throw new Error("Invalid order status.");
+}
+
+if (
+    typeof order.createdAt !== "string" ||
+    order.createdAt.trim() === ""
+) {
+    throw new Error("Invalid order creation date.");
+}
+
+for (const item of order.items) {
+    if (!item || typeof item !== "object") {
+    throw new Error("Invalid order item.");
+    }
+
+    if (
+    !item.product ||
+    typeof item.product !== "object"
+    ) {
+    throw new Error("Invalid order product.");
+    }
+
+    if (
+    !Number.isInteger(item.product.id) ||
+    item.product.id <= 0
+    ) {
+    throw new Error("Invalid product ID.");
+    }
+
+    if (
+    typeof item.product.name !== "string" ||
+    item.product.name.trim() === ""
+    ) {
+    throw new Error("Invalid product name.");
+    }
+
+    if (
+    !Number.isFinite(item.product.price) ||
+    item.product.price < 0
+    ) {
+    throw new Error("Invalid product price.");
+    }
+
+    if (
+    !Number.isInteger(item.quantity) ||
+    item.quantity <= 0
+    ) {
+    throw new Error("Invalid item quantity.");
+    }
+}
+}
+
 export async function createOrderAndClearCart(
 order: Order
 ): Promise<Order> {
+validateOrder(order);
+
 await dynamodb.send(
     new TransactWriteCommand({
     TransactItems: [
@@ -68,6 +156,13 @@ return order;
 export async function getOrdersByUserId(
 userId: string
 ): Promise<Order[]> {
+if (
+    typeof userId !== "string" ||
+    userId.trim() === ""
+) {
+    throw new Error("Invalid user ID.");
+}
+
 const result = await dynamodb.send(
     new QueryCommand({
     TableName: ORDERS_TABLE_NAME,
