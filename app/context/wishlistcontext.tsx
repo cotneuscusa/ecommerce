@@ -61,17 +61,25 @@ async function loadWishlist() {
     try {
     const response = await fetch("/api/wishlist");
 
-    if (!response.ok) {
-        throw new Error("Failed to load wishlist");
-    }
-
     const data = await response.json();
 
-    if (!Array.isArray(data)) {
+    if (!response.ok) {
+        throw new Error(
+        data?.error || "Failed to load wishlist"
+        );
+    }
+
+    const products = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.products)
+        ? data.products
+        : null;
+
+    if (!products) {
         throw new Error("Invalid wishlist data");
     }
 
-    setWishlist(data);
+    setWishlist(products);
     } catch (error) {
     console.error(
         "Failed to load wishlist:",

@@ -21,9 +21,9 @@ category: string;
 
 export async function getAllProducts(): Promise<ProductData[]> {
 const result = await dynamodb.send(
-    new ScanCommand({
+new ScanCommand({
     TableName: TABLE_NAME,
-    })
+})
 );
 
 return (result.Items ?? []) as ProductData[];
@@ -33,26 +33,30 @@ export async function getProductById(
 id: string
 ): Promise<ProductData | null> {
 const result = await dynamodb.send(
-    new GetCommand({
+new GetCommand({
     TableName: TABLE_NAME,
     Key: {
-        id,
+    id,
     },
-    })
+})
 );
 
-return (result.Item as ProductData | undefined) ?? null;
+return (
+(result.Item as ProductData | undefined) ??
+null
+);
 }
 
 export async function createProduct(
 product: ProductData
 ): Promise<ProductData> {
 await dynamodb.send(
-    new PutCommand({
+new PutCommand({
     TableName: TABLE_NAME,
     Item: product,
-    ConditionExpression: "attribute_not_exists(id)",
-    })
+    ConditionExpression:
+    "attribute_not_exists(id)",
+})
 );
 
 return product;
@@ -63,34 +67,36 @@ id: string,
 product: Omit<ProductData, "id">
 ): Promise<ProductData | null> {
 const result = await dynamodb.send(
-    new UpdateCommand({
+new UpdateCommand({
     TableName: TABLE_NAME,
     Key: {
-        id,
+    id,
     },
     UpdateExpression:
-        "SET #name = :name, #description = :description, #price = :price, #image = :image, #category = :category",
+    "SET #name = :name, #description = :description, #price = :price, #image = :image, #category = :category",
     ExpressionAttributeNames: {
-        "#name": "name",
-        "#description": "description",
-        "#price": "price",
-        "#image": "image",
-        "#category": "category",
+    "#name": "name",
+    "#description": "description",
+    "#price": "price",
+    "#image": "image",
+    "#category": "category",
     },
     ExpressionAttributeValues: {
-        ":name": product.name,
-        ":description": product.description,
-        ":price": product.price,
-        ":image": product.image,
-        ":category": product.category,
+    ":name": product.name,
+    ":description": product.description,
+    ":price": product.price,
+    ":image": product.image,
+    ":category": product.category,
     },
+    ConditionExpression:
+    "attribute_exists(id)",
     ReturnValues: "ALL_NEW",
-    })
+})
 );
 
 return (
-    (result.Attributes as ProductData | undefined) ??
-    null
+(result.Attributes as ProductData | undefined) ??
+null
 );
 }
 
@@ -98,13 +104,13 @@ export async function deleteProduct(
 id: string
 ): Promise<boolean> {
 const result = await dynamodb.send(
-    new DeleteCommand({
+new DeleteCommand({
     TableName: TABLE_NAME,
     Key: {
-        id,
+    id,
     },
     ReturnValues: "ALL_OLD",
-    })
+})
 );
 
 return Boolean(result.Attributes);

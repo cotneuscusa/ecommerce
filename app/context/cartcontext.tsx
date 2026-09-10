@@ -46,99 +46,111 @@ const [loaded, setLoaded] = useState(false);
 
 useEffect(() => {
 if (status === "loading") {
-    setLoaded(false);
-    return;
+setLoaded(false);
+return;
 }
 
 if (status === "unauthenticated") {
-    setCart([]);
-    setLoaded(true);
-    return;
+  setCart([]);
+  setLoaded(true);
+  return;
 }
 
 async function loadCart() {
-    setLoaded(false);
+  setLoaded(false);
 
-    try {
+  try {
     const response = await fetch("/api/cart");
 
     if (!response.ok) {
-        throw new Error("Failed to load cart");
+      throw new Error("Failed to load cart");
     }
 
     const data = await response.json();
 
-    setCart(Array.isArray(data) ? data : []);
-    } catch (error) {
+    setCart(Array.isArray(data?.items) ? data.items : []);
+  } catch (error) {
     console.error("Failed to load cart:", error);
     setCart([]);
-    } finally {
+  } finally {
     setLoaded(true);
-    }
+  }
 }
 
 loadCart();
+
+
 }, [status]);
 
 async function saveCart(nextCart: CartItem[]) {
 if (status !== "authenticated") {
-    return;
+return;
 }
+
 
 try {
-    const response = await fetch("/api/cart", {
+  const response = await fetch("/api/cart", {
     method: "PUT",
     headers: {
-        "Content-Type": "application/json",
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({
-        items: nextCart,
+      items: nextCart,
     }),
-    });
+  });
 
-    if (!response.ok) {
+  if (!response.ok) {
     throw new Error("Failed to save cart");
-    }
+  }
 } catch (error) {
-    console.error("Failed to save cart:", error);
+  console.error("Failed to save cart:", error);
 }
+
+
 }
 
 const addToCart = (product: Product) => {
 const nextCart = addProductToCart(cart, product);
 
+
 setCart(nextCart);
 saveCart(nextCart);
+
+
 };
 
 const removeFromCart = (productId: number) => {
 const nextCart = removeProductFromCart(
-    cart,
-    productId
+cart,
+productId
 );
+
 
 setCart(nextCart);
 saveCart(nextCart);
+
 };
 
 const increaseQuantity = (productId: number) => {
 const nextCart = increaseProductQuantity(
-    cart,
-    productId
+cart,
+productId
 );
 
 setCart(nextCart);
 saveCart(nextCart);
+
 };
 
 const decreaseQuantity = (productId: number) => {
 const nextCart = decreaseProductQuantity(
-    cart,
-    productId
+cart,
+productId
 );
 
 setCart(nextCart);
 saveCart(nextCart);
+
 };
 
 const clearCart = () => {
@@ -147,30 +159,31 @@ const nextCart = clearCartItems();
 setCart(nextCart);
 
 if (status === "authenticated") {
-    fetch("/api/cart", {
+  fetch("/api/cart", {
     method: "DELETE",
-    }).catch((error) => {
+  }).catch((error) => {
     console.error(
-        "Failed to clear cart:",
-        error
+      "Failed to clear cart:",
+      error
     );
-    });
+  });
 }
+
 };
 
 return (
 <CartContext.Provider
-    value={{
-    cart,
-    loaded,
-    addToCart,
-    removeFromCart,
-    increaseQuantity,
-    decreaseQuantity,
-    clearCart,
-    }}
+value={{
+cart,
+loaded,
+addToCart,
+removeFromCart,
+increaseQuantity,
+decreaseQuantity,
+clearCart,
+}}
 >
-    {children}
+{children}
 </CartContext.Provider>
 );
 }
@@ -180,7 +193,7 @@ const context = useContext(CartContext);
 
 if (!context) {
 throw new Error(
-    "useCart must be used inside CartProvider"
+"useCart must be used inside CartProvider"
 );
 }
 

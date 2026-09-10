@@ -6,413 +6,919 @@ import { useSession } from "next-auth/react";
 import { useCart } from "../context/cartcontext";
 
 type CustomerInfo = {
-name: string;
-email: string;
-address: string;
-city: string;
-postal: string;
+    name: string;
+    email: string;
+    address: string;
+    city: string;
+    postal: string;
 };
 
 export default function CheckoutPage() {
-const { status } = useSession();
+    const { data: session, status } = useSession();
 
-const {
-cart,
-clearCart,
-removeFromCart,
-increaseQuantity,
-decreaseQuantity,
-} = useCart();
+    const {
+        cart,
+        clearCart,
+    } = useCart();
 
-const [orderPlaced, setOrderPlaced] = useState(false);
-const [loading, setLoading] = useState(false);
-const [error, setError] = useState("");
-
-const [customerInfo, setCustomerInfo] =
-useState<CustomerInfo>({
-    name: "",
-    email: "",
-    address: "",
-    city: "",
-    postal: "",
-});
-
-const [orderName, setOrderName] = useState("");
-const [orderEmail, setOrderEmail] = useState("");
-const [orderNumber, setOrderNumber] = useState("");
-
-const cartCount = cart.reduce(
-(total, item) => total + item.quantity,
-0
-);
-
-const cartTotal = cart.reduce(
-(total, item) =>
-    total + item.product.price * item.quantity,
-0
-);
-
-const handleChange = (
-event: React.ChangeEvent<HTMLInputElement>
-) => {
-const { name, value } = event.target;
-
-setCustomerInfo((currentInfo) => ({
-    ...currentInfo,
-    [name]: value,
-}));
-};
-
-const handleSubmit = async (
-event: FormEvent<HTMLFormElement>
-) => {
-event.preventDefault();
-
-setError("");
-
-if (
-    !customerInfo.name.trim() ||
-    !customerInfo.email.trim() ||
-    !customerInfo.address.trim() ||
-    !customerInfo.city.trim() ||
-    !customerInfo.postal.trim()
-) {
-    setError("Please fill in all fields.");
-    return;
-}
-
-setLoading(true);
-
-try {
-    const response = await fetch("/api/orders", {
-    method: "POST",
-    headers: {
-        "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-        items: cart.map((item) => ({
-        product: item.product,
-        quantity: item.quantity,
-        })),
-        customer: customerInfo,
-    }),
+    const [customerInfo, setCustomerInfo] = useState<CustomerInfo>({
+        name: session?.user?.name ?? "",
+        email: session?.user?.email ?? "",
+        address: "",
+        city: "",
+        postal: "",
     });
 
-    const data = await response.json();
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState("");
+    const [orderPlaced, setOrderPlaced] = useState(false);
+    const [orderId, setOrderId] = useState("");
+    const [idempotencyKey] = useState(() => crypto.randomUUID());
 
-    if (!response.ok) {
-    setError(
-        data.error || "Failed to place your order."
+    const cartCount = cart.reduce(
+        (total, item) => total + item.quantity,
+        0
     );
-    setLoading(false);
-    return;
+
+    const cartTotal = cart.reduce(
+        (total, item) =>
+            total + item.product.price * item.quantity,
+        0
+    );
+
+    function updateCustomerInfo(
+        field: keyof CustomerInfo,
+        value: string
+    ) {
+        setCustomerInfo((current) => ({
+            ...current,
+            [field]: value,
+        }));
     }
 
-    setOrderName(customerInfo.name);
-    setOrderEmail(customerInfo.email);
-    setOrderNumber(data.order.id);
+    async function handleSubmit(
+        event: FormEvent<HTMLFormElement>
+    ) {
+        event.preventDefault();
 
-    clearCart();
-    setOrderPlaced(true);
-} catch (error) {
-    console.error("Checkout error:", error);
-    setError(
-    "Something went wrong. Please try again."
-    );
-} finally {
-    setLoading(false);
-}
-};
+        setError("");
+        setLoading(true);
 
-if (status === "loading") {
-return (
-    <main className="checkout-page">
-    <div className="checkout-empty">
-        <h1>Loading...</h1>
-        <p>Please wait.</p>
-    </div>
-    </main>
-);
-}
+        try {
+            const response = await fetch("/api/orders", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    customer: customerInfo,
+                    idempotencyKey,
+                }),
+            });
 
-if (status === "unauthenticated") {
-return (
-    <main className="checkout-page">
-    <div className="checkout-empty">
-        <h1>Login Required</h1>
+            const data = await response.json();
 
-        <p>
-        You need to be logged in to place an
-        order.
-        </p>
+            if (!response.ok) {
+                throw new Error(
+                    data?.error || "Failed to place order."
+                );
+            }
 
-        <Link href="/login">
-        Login
-        </Link>
-    </div>
-    </main>
-);
-}
+            setOrderId(data.order?.id ?? "");
+            setOrderPlaced(true);
+            clearCart();
+        } catch (err) {
+            setError(
+                err instanceof Error
+                    ? err.message
+                    : "Failed to place order."
+            );
+        } finally {
+            setLoading(false);
+        }
+    }
 
-if (orderPlaced) {
-return (
-    <main className="checkout-page">
-    <div className="order-confirmation">
-        <div className="success-icon">✓</div>
-
-        <p className="confirmation-label">
-        ORDER CONFIRMED
-        </p>
-
-        <h1>
-        Thank you, {orderName}!
-        </h1>
-
-        <p className="confirmation-message">
-        Your order has been successfully placed.
-        </p>
-
-        <div className="order-number">
-        <span>Order Number</span>
-
-        <strong>{orderNumber}</strong>
-        </div>
-
-        <p className="confirmation-email">
-        A confirmation will be sent to{" "}
-        <strong>{orderEmail}</strong>.
-        </p>
-
-        <Link
-        href="/"
-        className="back-to-store-button"
-        >
-        Continue Shopping
-        </Link>
-    </div>
-    </main>
-);
-}
-
-if (cart.length === 0) {
-return (
-    <main className="checkout-page">
-    <div className="checkout-empty">
-        <h1>Your cart is empty</h1>
-
-        <p>
-        Add some products before checking out.
-        </p>
-
-        <Link href="/">
-        ← Back to Store
-        </Link>
-    </div>
-    </main>
-);
-}
-
-return (
-<main className="checkout-page">
-    <Link
-    href="/"
-    className="back-link"
-    >
-    ← Back to Store
-    </Link>
-
-    <h1>Checkout</h1>
-
-    <div className="checkout-container">
-    <section className="checkout-form-section">
-        <h2>Customer Information</h2>
-
-        <form onSubmit={handleSubmit}>
-        <div className="form-group">
-            <label htmlFor="name">
-            Full Name
-            </label>
-
-            <input
-            id="name"
-            name="name"
-            type="text"
-            value={customerInfo.name}
-            onChange={handleChange}
-            placeholder="Enter your name"
-            required
-            />
-        </div>
-
-        <div className="form-group">
-            <label htmlFor="email">
-            Email
-            </label>
-
-            <input
-            id="email"
-            name="email"
-            type="email"
-            value={customerInfo.email}
-            onChange={handleChange}
-            placeholder="Enter your email"
-            required
-            />
-        </div>
-
-        <div className="form-group">
-            <label htmlFor="address">
-            Address
-            </label>
-
-            <input
-            id="address"
-            name="address"
-            type="text"
-            value={customerInfo.address}
-            onChange={handleChange}
-            placeholder="Enter your address"
-            required
-            />
-        </div>
-
-        <div className="form-row">
-            <div className="form-group">
-            <label htmlFor="city">
-                City
-            </label>
-
-            <input
-                id="city"
-                name="city"
-                type="text"
-                value={customerInfo.city}
-                onChange={handleChange}
-                placeholder="City"
-                required
-            />
-            </div>
-
-            <div className="form-group">
-            <label htmlFor="postal">
-                Postal Code
-            </label>
-
-            <input
-                id="postal"
-                name="postal"
-                type="text"
-                value={customerInfo.postal}
-                onChange={handleChange}
-                placeholder="Postal code"
-                required
-            />
-            </div>
-        </div>
-
-        {error && (
-            <p className="auth-error">
-            {error}
-            </p>
-        )}
-
-        <button
-            type="submit"
-            className="place-order-button"
-            disabled={loading}
-        >
-            {loading
-            ? "Placing Order..."
-            : "Place Order"}
-        </button>
-        </form>
-    </section>
-
-    <section className="checkout-summary">
-        <h2>Order Summary</h2>
-
-        <div className="checkout-items">
-        {cart.map((item) => (
-            <div
-            className="checkout-item"
-            key={item.product.id}
+    if (status === "loading") {
+        return (
+            <main
+                style={{
+                    minHeight: "100vh",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: "#f5f7fb",
+                    color: "#667085",
+                }}
             >
-            <img
-                src={item.product.image}
-                alt={item.product.name}
-            />
+                Loading checkout...
+            </main>
+        );
+    }
 
-            <div className="checkout-item-info">
-                <h3>{item.product.name}</h3>
-
-                <p>
-                ${item.product.price.toFixed(2)}
-                </p>
-
-                <div className="checkout-quantity">
-                <button
-                    type="button"
-                    onClick={() =>
-                    decreaseQuantity(
-                        item.product.id
-                    )
-                    }
+    if (!session) {
+        return (
+            <main
+                style={{
+                    minHeight: "100vh",
+                    background: "#f5f7fb",
+                    padding: "60px 20px",
+                    boxSizing: "border-box",
+                }}
+            >
+                <div
+                    style={{
+                        maxWidth: "520px",
+                        margin: "0 auto",
+                        padding: "50px 40px",
+                        background: "#ffffff",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "20px",
+                        textAlign: "center",
+                        boxShadow:
+                            "0 15px 45px rgba(15, 23, 42, 0.08)",
+                    }}
                 >
-                    −
-                </button>
+                    <div
+                        style={{
+                            width: "64px",
+                            height: "64px",
+                            margin: "0 auto 20px",
+                            borderRadius: "50%",
+                            background: "#f0efff",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "28px",
+                        }}
+                    >
+                        🔐
+                    </div>
 
-                <span>{item.quantity}</span>
+                    <h1
+                        style={{
+                            margin: "0 0 10px",
+                            color: "#111827",
+                            fontSize: "30px",
+                        }}
+                    >
+                        Sign in to checkout
+                    </h1>
 
-                <button
-                    type="button"
-                    onClick={() =>
-                    increaseQuantity(
-                        item.product.id
-                    )
-                    }
+                    <p
+                        style={{
+                            margin: "0 0 28px",
+                            color: "#667085",
+                            lineHeight: "1.6",
+                        }}
+                    >
+                        You need to be signed in before placing an
+                        order.
+                    </p>
+
+                    <Link
+                        href="/login"
+                        style={{
+                            display: "inline-block",
+                            padding: "14px 28px",
+                            borderRadius: "10px",
+                            background: "#111827",
+                            color: "#ffffff",
+                            fontSize: "14px",
+                            fontWeight: "700",
+                            textDecoration: "none",
+                        }}
+                    >
+                        Sign in
+                    </Link>
+
+                    <Link
+                        href="/cart"
+                        style={{
+                            display: "block",
+                            marginTop: "20px",
+                            color: "#667085",
+                            fontSize: "14px",
+                            fontWeight: "600",
+                            textDecoration: "none",
+                        }}
+                    >
+                        ← Back to Cart
+                    </Link>
+                </div>
+            </main>
+        );
+    }
+
+    if (orderPlaced) {
+        return (
+            <main
+                style={{
+                    minHeight: "100vh",
+                    background: "#f5f7fb",
+                    padding: "70px 20px",
+                    boxSizing: "border-box",
+                }}
+            >
+                <div
+                    style={{
+                        maxWidth: "600px",
+                        margin: "0 auto",
+                        padding: "55px 40px",
+                        background: "#ffffff",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "22px",
+                        textAlign: "center",
+                        boxShadow:
+                            "0 15px 50px rgba(15, 23, 42, 0.08)",
+                    }}
                 >
-                    +
-                </button>
+                    <div
+                        style={{
+                            width: "72px",
+                            height: "72px",
+                            margin: "0 auto 22px",
+                            borderRadius: "50%",
+                            background: "#ecfdf3",
+                            color: "#027a48",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "32px",
+                            fontWeight: "800",
+                        }}
+                    >
+                        ✓
+                    </div>
+
+                    <p
+                        style={{
+                            margin: "0 0 8px",
+                            color: "#635bff",
+                            fontSize: "12px",
+                            fontWeight: "800",
+                            letterSpacing: "1.6px",
+                        }}
+                    >
+                        ORDER CONFIRMED
+                    </p>
+
+                    <h1
+                        style={{
+                            margin: "0 0 12px",
+                            color: "#111827",
+                            fontSize: "34px",
+                            letterSpacing: "-1px",
+                        }}
+                    >
+                        Thank you for your order!
+                    </h1>
+
+                    <p
+                        style={{
+                            margin: "0 0 20px",
+                            color: "#667085",
+                            fontSize: "15px",
+                            lineHeight: "1.6",
+                        }}
+                    >
+                        Your order has been successfully placed.
+                    </p>
+
+                    {orderId && (
+                        <div
+                            style={{
+                                marginBottom: "28px",
+                                padding: "14px",
+                                borderRadius: "10px",
+                                background: "#f8fafc",
+                                color: "#475467",
+                                fontSize: "13px",
+                            }}
+                        >
+                            Order ID: <strong>{orderId}</strong>
+                        </div>
+                    )}
+
+                    <div
+                        style={{
+                            display: "flex",
+                            justifyContent: "center",
+                            gap: "12px",
+                            flexWrap: "wrap",
+                        }}
+                    >
+                        <Link
+                            href="/orders"
+                            style={{
+                                padding: "13px 22px",
+                                borderRadius: "10px",
+                                background: "#111827",
+                                color: "#ffffff",
+                                fontSize: "14px",
+                                fontWeight: "700",
+                                textDecoration: "none",
+                            }}
+                        >
+                            View My Orders
+                        </Link>
+
+                        <Link
+                            href="/"
+                            style={{
+                                padding: "13px 22px",
+                                borderRadius: "10px",
+                                border: "1px solid #d1d5db",
+                                background: "#ffffff",
+                                color: "#111827",
+                                fontSize: "14px",
+                                fontWeight: "700",
+                                textDecoration: "none",
+                            }}
+                        >
+                            Continue Shopping
+                        </Link>
+                    </div>
+                </div>
+            </main>
+        );
+    }
+
+    if (cart.length === 0) {
+        return (
+            <main
+                style={{
+                    minHeight: "100vh",
+                    background: "#f5f7fb",
+                    padding: "70px 20px",
+                    boxSizing: "border-box",
+                }}
+            >
+                <div
+                    style={{
+                        maxWidth: "520px",
+                        margin: "0 auto",
+                        padding: "55px 40px",
+                        background: "#ffffff",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "20px",
+                        textAlign: "center",
+                        boxShadow:
+                            "0 15px 45px rgba(15, 23, 42, 0.07)",
+                    }}
+                >
+                    <div
+                        style={{
+                            fontSize: "44px",
+                            marginBottom: "18px",
+                        }}
+                    >
+                        🛒
+                    </div>
+
+                    <h1
+                        style={{
+                            margin: "0 0 10px",
+                            color: "#111827",
+                            fontSize: "30px",
+                        }}
+                    >
+                        Your cart is empty
+                    </h1>
+
+                    <p
+                        style={{
+                            margin: "0 0 28px",
+                            color: "#667085",
+                            lineHeight: "1.6",
+                        }}
+                    >
+                        Add some products to your cart before
+                        checking out.
+                    </p>
+
+                    <Link
+                        href="/cart"
+                        style={{
+                            display: "inline-block",
+                            padding: "14px 25px",
+                            borderRadius: "10px",
+                            background: "#111827",
+                            color: "#ffffff",
+                            fontSize: "14px",
+                            fontWeight: "700",
+                            textDecoration: "none",
+                        }}
+                    >
+                        Back to Cart
+                    </Link>
+                </div>
+            </main>
+        );
+    }
+
+    return (
+        <main
+            style={{
+                minHeight: "100vh",
+                background: "#f5f7fb",
+                padding: "40px 20px 80px",
+                boxSizing: "border-box",
+            }}
+        >
+            <div
+                style={{
+                    maxWidth: "1100px",
+                    margin: "0 auto",
+                }}
+            >
+                <Link
+                    href="/cart"
+                    style={{
+                        display: "inline-block",
+                        marginBottom: "35px",
+                        color: "#667085",
+                        fontSize: "14px",
+                        fontWeight: "600",
+                        textDecoration: "none",
+                    }}
+                >
+                    ← Back to Cart
+                </Link>
+
+                <div style={{ marginBottom: "35px" }}>
+                    <p
+                        style={{
+                            margin: "0 0 8px",
+                            color: "#635bff",
+                            fontSize: "12px",
+                            fontWeight: "800",
+                            letterSpacing: "1.8px",
+                        }}
+                    >
+                        SECURE CHECKOUT
+                    </p>
+
+                    <h1
+                        style={{
+                            margin: "0 0 10px",
+                            color: "#111827",
+                            fontSize: "40px",
+                            lineHeight: "1.15",
+                            letterSpacing: "-1.5px",
+                        }}
+                    >
+                        Complete your order
+                    </h1>
+
+                    <p
+                        style={{
+                            margin: 0,
+                            color: "#667085",
+                            fontSize: "16px",
+                        }}
+                    >
+                        Enter your information and review your order.
+                    </p>
                 </div>
 
-                <button
-                type="button"
-                className="checkout-remove-button"
-                onClick={() =>
-                    removeFromCart(
-                    item.product.id
-                    )
-                }
-                >
-                Remove
-                </button>
+                <form onSubmit={handleSubmit}>
+                    <div
+                        style={{
+                            display: "grid",
+                            gridTemplateColumns:
+                                "minmax(0, 1fr) 350px",
+                            gap: "24px",
+                            alignItems: "start",
+                        }}
+                    >
+                        <div
+                            style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "20px",
+                            }}
+                        >
+                            <section
+                                style={{
+                                    padding: "28px",
+                                    background: "#ffffff",
+                                    border: "1px solid #e5e7eb",
+                                    borderRadius: "18px",
+                                    boxShadow:
+                                        "0 6px 20px rgba(15, 23, 42, 0.04)",
+                                }}
+                            >
+                                <h2
+                                    style={{
+                                        margin: "0 0 6px",
+                                        color: "#111827",
+                                        fontSize: "21px",
+                                    }}
+                                >
+                                    Customer Information
+                                </h2>
+
+                                <p
+                                    style={{
+                                        margin: "0 0 24px",
+                                        color: "#667085",
+                                        fontSize: "14px",
+                                    }}
+                                >
+                                    Where should we send your order?
+                                </p>
+
+                                <div
+                                    style={{
+                                        display: "grid",
+                                        gridTemplateColumns:
+                                            "repeat(2, minmax(0, 1fr))",
+                                        gap: "18px",
+                                    }}
+                                >
+                                    <div>
+                                        <label
+                                            htmlFor="name"
+                                            style={{
+                                                display: "block",
+                                                marginBottom: "8px",
+                                                color: "#374151",
+                                                fontSize: "14px",
+                                                fontWeight: "700",
+                                            }}
+                                        >
+                                            Full name
+                                        </label>
+
+                                        <input
+                                            id="name"
+                                            type="text"
+                                            value={customerInfo.name}
+                                            onChange={(event) =>
+                                                updateCustomerInfo(
+                                                    "name",
+                                                    event.target.value
+                                                )
+                                            }
+                                            required
+                                            style={{
+                                                width: "100%",
+                                                boxSizing: "border-box",
+                                                padding: "13px 14px",
+                                                border: "1px solid #d1d5db",
+                                                borderRadius: "10px",
+                                                background: "#ffffff",
+                                                color: "#111827",
+                                                fontSize: "14px",
+                                            }}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label
+                                            htmlFor="email"
+                                            style={{
+                                                display: "block",
+                                                marginBottom: "8px",
+                                                color: "#374151",
+                                                fontSize: "14px",
+                                                fontWeight: "700",
+                                            }}
+                                        >
+                                            Email
+                                        </label>
+
+                                        <input
+                                            id="email"
+                                            type="email"
+                                            value={customerInfo.email}
+                                            onChange={(event) =>
+                                                updateCustomerInfo(
+                                                    "email",
+                                                    event.target.value
+                                                )
+                                            }
+                                            required
+                                            style={{
+                                                width: "100%",
+                                                boxSizing: "border-box",
+                                                padding: "13px 14px",
+                                                border: "1px solid #d1d5db",
+                                                borderRadius: "10px",
+                                                background: "#ffffff",
+                                                color: "#111827",
+                                                fontSize: "14px",
+                                            }}
+                                        />
+                                    </div>
+
+                                    <div
+                                        style={{
+                                            gridColumn: "1 / -1",
+                                        }}
+                                    >
+                                        <label
+                                            htmlFor="address"
+                                            style={{
+                                                display: "block",
+                                                marginBottom: "8px",
+                                                color: "#374151",
+                                                fontSize: "14px",
+                                                fontWeight: "700",
+                                            }}
+                                        >
+                                            Address
+                                        </label>
+
+                                        <input
+                                            id="address"
+                                            type="text"
+                                            value={customerInfo.address}
+                                            onChange={(event) =>
+                                                updateCustomerInfo(
+                                                    "address",
+                                                    event.target.value
+                                                )
+                                            }
+                                            required
+                                            style={{
+                                                width: "100%",
+                                                boxSizing: "border-box",
+                                                padding: "13px 14px",
+                                                border: "1px solid #d1d5db",
+                                                borderRadius: "10px",
+                                                background: "#ffffff",
+                                                color: "#111827",
+                                                fontSize: "14px",
+                                            }}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label
+                                            htmlFor="city"
+                                            style={{
+                                                display: "block",
+                                                marginBottom: "8px",
+                                                color: "#374151",
+                                                fontSize: "14px",
+                                                fontWeight: "700",
+                                            }}
+                                        >
+                                            City
+                                        </label>
+
+                                        <input
+                                            id="city"
+                                            type="text"
+                                            value={customerInfo.city}
+                                            onChange={(event) =>
+                                                updateCustomerInfo(
+                                                    "city",
+                                                    event.target.value
+                                                )
+                                            }
+                                            required
+                                            style={{
+                                                width: "100%",
+                                                boxSizing: "border-box",
+                                                padding: "13px 14px",
+                                                border: "1px solid #d1d5db",
+                                                borderRadius: "10px",
+                                                background: "#ffffff",
+                                                color: "#111827",
+                                                fontSize: "14px",
+                                            }}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label
+                                            htmlFor="postal"
+                                            style={{
+                                                display: "block",
+                                                marginBottom: "8px",
+                                                color: "#374151",
+                                                fontSize: "14px",
+                                                fontWeight: "700",
+                                            }}
+                                        >
+                                            Postal code
+                                        </label>
+
+                                        <input
+                                            id="postal"
+                                            type="text"
+                                            value={customerInfo.postal}
+                                            onChange={(event) =>
+                                                updateCustomerInfo(
+                                                    "postal",
+                                                    event.target.value
+                                                )
+                                            }
+                                            required
+                                            style={{
+                                                width: "100%",
+                                                boxSizing: "border-box",
+                                                padding: "13px 14px",
+                                                border: "1px solid #d1d5db",
+                                                borderRadius: "10px",
+                                                background: "#ffffff",
+                                                color: "#111827",
+                                                fontSize: "14px",
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                            </section>
+
+                            {error && (
+                                <div
+                                    style={{
+                                        padding: "14px 16px",
+                                        border: "1px solid #fecaca",
+                                        borderRadius: "12px",
+                                        background: "#fef2f2",
+                                        color: "#b42318",
+                                        fontSize: "14px",
+                                        fontWeight: "600",
+                                    }}
+                                >
+                                    {error}
+                                </div>
+                            )}
+                        </div>
+
+                        <aside
+                            style={{
+                                position: "sticky",
+                                top: "24px",
+                                padding: "26px",
+                                background: "#111827",
+                                borderRadius: "18px",
+                                color: "#ffffff",
+                                boxShadow:
+                                    "0 15px 40px rgba(15, 23, 42, 0.15)",
+                            }}
+                        >
+                            <p
+                                style={{
+                                    margin: "0 0 8px",
+                                    color: "#a5b4fc",
+                                    fontSize: "11px",
+                                    fontWeight: "800",
+                                    letterSpacing: "1.5px",
+                                }}
+                            >
+                                ORDER SUMMARY
+                            </p>
+
+                            <h2
+                                style={{
+                                    margin: "0 0 22px",
+                                    fontSize: "24px",
+                                }}
+                            >
+                                Your Order
+                            </h2>
+
+                            <div
+                                style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: "14px",
+                                    marginBottom: "22px",
+                                }}
+                            >
+                                {cart.map((item) => (
+                                    <div
+                                        key={item.product.id}
+                                        style={{
+                                            display: "grid",
+                                            gridTemplateColumns:
+                                                "54px minmax(0, 1fr)",
+                                            gap: "12px",
+                                            alignItems: "center",
+                                        }}
+                                    >
+                                        <img
+                                            src={item.product.image}
+                                            alt={item.product.name}
+                                            style={{
+                                                width: "54px",
+                                                height: "54px",
+                                                objectFit: "cover",
+                                                borderRadius: "8px",
+                                                background: "#374151",
+                                            }}
+                                        />
+
+                                        <div
+                                            style={{
+                                                minWidth: 0,
+                                            }}
+                                        >
+                                            <p
+                                                style={{
+                                                    margin: "0 0 3px",
+                                                    color: "#ffffff",
+                                                    fontSize: "13px",
+                                                    fontWeight: "700",
+                                                    overflow: "hidden",
+                                                    textOverflow: "ellipsis",
+                                                    whiteSpace: "nowrap",
+                                                }}
+                                            >
+                                                {item.product.name}
+                                            </p>
+
+                                            <p
+                                                style={{
+                                                    margin: 0,
+                                                    color: "#9ca3af",
+                                                    fontSize: "12px",
+                                                }}
+                                            >
+                                                {item.quantity} × $
+                                                {item.product.price.toFixed(2)}
+                                            </p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div
+                                style={{
+                                    paddingTop: "18px",
+                                    borderTop: "1px solid #374151",
+                                }}
+                            >
+                                <div
+                                    style={{
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        marginBottom: "10px",
+                                        color: "#d1d5db",
+                                        fontSize: "14px",
+                                    }}
+                                >
+                                    <span>Items</span>
+                                    <span>{cartCount}</span>
+                                </div>
+
+                                <div
+                                    style={{
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        alignItems: "center",
+                                        marginBottom: "22px",
+                                    }}
+                                >
+                                    <span
+                                        style={{
+                                            color: "#d1d5db",
+                                            fontSize: "14px",
+                                        }}
+                                    >
+                                        Total
+                                    </span>
+
+                                    <strong
+                                        style={{
+                                            fontSize: "25px",
+                                        }}
+                                    >
+                                        ${cartTotal.toFixed(2)}
+                                    </strong>
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    disabled={loading}
+                                    style={{
+                                        width: "100%",
+                                        padding: "14px",
+                                        border: "none",
+                                        borderRadius: "10px",
+                                        background: "#ffffff",
+                                        color: "#111827",
+                                        fontSize: "14px",
+                                        fontWeight: "800",
+                                        cursor: loading
+                                            ? "not-allowed"
+                                            : "pointer",
+                                        opacity: loading ? 0.65 : 1,
+                                    }}
+                                >
+                                    {loading
+                                        ? "Placing Order..."
+                                        : "Place Order"}
+                                </button>
+                            </div>
+                        </aside>
+                    </div>
+                </form>
             </div>
-            </div>
-        ))}
-        </div>
-
-        <div className="checkout-total">
-        <span>Items</span>
-        <span>{cartCount}</span>
-        </div>
-
-        <div className="checkout-total final-total">
-        <strong>Total</strong>
-
-        <strong>
-            ${cartTotal.toFixed(2)}
-        </strong>
-        </div>
-
-        <button
-        type="button"
-        className="checkout-clear-button"
-        onClick={clearCart}
-        >
-        Clear Cart
-        </button>
-    </section>
-    </div>
-</main>
-);
+        </main>
+    );
 }

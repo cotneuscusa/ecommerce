@@ -1,6 +1,8 @@
 import type { Product } from "@/lib/types";
 import type { CartItem } from "@/lib/repositories/cart";
 
+const MAX_ITEM_QUANTITY = 100;
+
 export function addProductToCart(
 cart: CartItem[],
 product: Product
@@ -14,7 +16,10 @@ return cart.map((item) =>
     item.product.id === product.id
     ? {
         ...item,
-        quantity: item.quantity + 1,
+        quantity: Math.min(
+            item.quantity + 1,
+            MAX_ITEM_QUANTITY
+        ),
         }
     : item
 );
@@ -46,7 +51,10 @@ return cart.map((item) =>
 item.product.id === productId
     ? {
         ...item,
-        quantity: item.quantity + 1,
+        quantity: Math.min(
+        item.quantity + 1,
+        MAX_ITEM_QUANTITY
+        ),
     }
     : item
 );

@@ -1,5 +1,5 @@
 import {
-PutCommand,
+GetCommand,
 QueryCommand,
 TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
@@ -36,121 +36,65 @@ status: string;
 createdAt: string;
 };
 
-function validateOrder(order: Order): void {
-if (!order || typeof order !== "object") {
-    throw new Error("Invalid order.");
-}
-
-if (
-    typeof order.id !== "string" ||
-    order.id.trim() === ""
-) {
-    throw new Error("Invalid order ID.");
-}
-
-if (
-    typeof order.userId !== "string" ||
-    order.userId.trim() === ""
-) {
-    throw new Error("Invalid user ID.");
-}
-
-if (!Array.isArray(order.items) || order.items.length === 0) {
-    throw new Error("Order must contain at least one item.");
-}
-
-if (
-    !Number.isFinite(order.total) ||
-    order.total < 0
-) {
-    throw new Error("Invalid order total.");
-}
-
-if (
-    typeof order.status !== "string" ||
-    order.status.trim() === ""
-) {
-    throw new Error("Invalid order status.");
-}
-
-if (
-    typeof order.createdAt !== "string" ||
-    order.createdAt.trim() === ""
-) {
-    throw new Error("Invalid order creation date.");
-}
-
-for (const item of order.items) {
-    if (!item || typeof item !== "object") {
-    throw new Error("Invalid order item.");
-    }
-
-    if (
-    !item.product ||
-    typeof item.product !== "object"
-    ) {
-    throw new Error("Invalid order product.");
-    }
-
-    if (
-    !Number.isInteger(item.product.id) ||
-    item.product.id <= 0
-    ) {
-    throw new Error("Invalid product ID.");
-    }
-
-    if (
-    typeof item.product.name !== "string" ||
-    item.product.name.trim() === ""
-    ) {
-    throw new Error("Invalid product name.");
-    }
-
-    if (
-    !Number.isFinite(item.product.price) ||
-    item.product.price < 0
-    ) {
-    throw new Error("Invalid product price.");
-    }
-
-    if (
-    !Number.isInteger(item.quantity) ||
-    item.quantity <= 0
-    ) {
-    throw new Error("Invalid item quantity.");
-    }
-}
-}
-
 export async function createOrderAndClearCart(
 order: Order
 ): Promise<Order> {
-validateOrder(order);
-
-await dynamodb.send(
+try {
+    await dynamodb.send(
     new TransactWriteCommand({
-    TransactItems: [
+        TransactItems: [
         {
-        Put: {
+            Put: {
             TableName: ORDERS_TABLE_NAME,
             Item: order,
-            ConditionExpression:
-            "attribute_not_exists(id)",
-        },
-        },
-        {
-        Delete: {
-            TableName: CARTS_TABLE_NAME,
-            Key: {
-            userId: order.userId,
+            ConditionExpression: "attribute_not_exists(id)",
             },
         },
+        {
+            Delete: {
+            TableName: CARTS_TABLE_NAME,
+            Key: {
+                userId: order.userId,
+            },
+            ConditionExpression: "attribute_exists(userId)",
+            },
         },
-    ],
+        ],
+    })
+    );
+
+    return order;
+} catch (error) {
+    /*
+    * If another request with the same idempotency key already
+    * created this order, the conditional Put will fail.
+    *
+    * Retrieve the existing order and return it instead of
+    * creating a duplicate.
+    */
+    const existingOrder = await getOrderById(order.id);
+
+    if (existingOrder && existingOrder.userId === order.userId) {
+    return existingOrder;
+    }
+
+    throw error;
+}
+}
+
+async function getOrderById(
+orderId: string
+): Promise<Order | null> {
+const result = await dynamodb.send(
+    new GetCommand({
+    TableName: ORDERS_TABLE_NAME,
+    Key: {
+        id: orderId,
+    },
     })
 );
 
-return order;
+return (result.Item as Order | undefined) ?? null;
 }
 
 export async function getOrdersByUserId(
@@ -167,8 +111,7 @@ const result = await dynamodb.send(
     new QueryCommand({
     TableName: ORDERS_TABLE_NAME,
     IndexName: USER_ORDERS_INDEX,
-    KeyConditionExpression:
-        "userId = :userId",
+    KeyConditionExpression: "userId = :userId",
     ExpressionAttributeValues: {
         ":userId": userId,
     },

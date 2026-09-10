@@ -1,3 +1,5 @@
+import { createHash } from "crypto";
+
 import { getProductById } from "@/lib/repositories/products";
 
 import {
@@ -5,6 +7,7 @@ createOrderAndClearCart,
 type Order,
 type OrderItem,
 } from "@/lib/repositories/orders";
+
 import { getCart } from "@/lib/repositories/cart";
 
 type CustomerInfo = {
@@ -18,15 +21,20 @@ postal: string;
 type CreateOrderInput = {
 userId: string;
 customer: CustomerInfo | undefined;
+idempotencyKey: string;
 };
 
 const MAX_ITEM_QUANTITY = 100;
+const MAX_CART_ITEMS = 50;
+const MAX_IDEMPOTENCY_KEY_LENGTH = 200;
 
 function validateCustomer(
 customer: CustomerInfo | undefined
 ): CustomerInfo {
 if (!customer) {
-throw new Error("Complete customer information is required.");
+throw new Error(
+    "Complete customer information is required."
+);
 }
 
 if (
@@ -41,10 +49,35 @@ customer.city.trim() === "" ||
 typeof customer.postal !== "string" ||
 customer.postal.trim() === ""
 ) {
-throw new Error("Complete customer information is required.");
+throw new Error(
+    "Complete customer information is required."
+);
 }
 
 return customer;
+}
+
+function validateIdempotencyKey(
+idempotencyKey: string
+): string {
+if (
+typeof idempotencyKey !== "string" ||
+idempotencyKey.trim() === "" ||
+idempotencyKey.length > MAX_IDEMPOTENCY_KEY_LENGTH
+) {
+throw new Error("Invalid checkout request.");
+}
+
+return idempotencyKey.trim();
+}
+
+function createDeterministicOrderId(
+userId: string,
+idempotencyKey: string
+): string {
+return createHash("sha256")
+.update(`${userId}:${idempotencyKey}`)
+.digest("hex");
 }
 
 function toCents(price: number): number {
@@ -64,14 +97,28 @@ return cents;
 export async function createOrderFromCart(
 input: CreateOrderInput
 ): Promise<Order> {
-const { userId, customer } = input;
+const {
+userId,
+customer,
+idempotencyKey,
+} = input;
 
-const validCustomer = validateCustomer(customer);
+const validCustomer =
+validateCustomer(customer);
+
+const validIdempotencyKey =
+validateIdempotencyKey(idempotencyKey);
 
 const items = await getCart(userId);
 
 if (!items.length) {
 throw new Error("Your cart is empty.");
+}
+
+if (items.length > MAX_CART_ITEMS) {
+throw new Error(
+    "Your cart contains too many items."
+);
 }
 
 const verifiedItems: OrderItem[] = [];
@@ -81,7 +128,10 @@ if (!item || typeof item !== "object") {
     throw new Error("Invalid order item.");
 }
 
-const productId = String(item.product?.id ?? "");
+const productId = String(
+    item.product?.id ?? ""
+);
+
 const quantity = Number(item.quantity);
 
 if (
@@ -93,14 +143,16 @@ if (
     throw new Error("Invalid order item.");
 }
 
-const product = await getProductById(productId);
+const product =
+    await getProductById(productId);
 
 if (!product) {
-    throw new Error(`Product ${productId} was not found.`);
+    throw new Error(
+    `Product ${productId} was not found.`
+    );
 }
 
 const price = Number(product.price);
-
 toCents(price);
 
 verifiedItems.push({
@@ -116,17 +168,27 @@ verifiedItems.push({
 
 const totalCents = verifiedItems.reduce(
 (sum, item) => {
-    const priceCents = toCents(item.product.price);
-    const itemTotalCents = priceCents * item.quantity;
+    const priceCents =
+    toCents(item.product.price);
 
-    if (!Number.isSafeInteger(itemTotalCents)) {
-    throw new Error("Invalid order total.");
+    const itemTotalCents =
+    priceCents * item.quantity;
+
+    if (
+    !Number.isSafeInteger(itemTotalCents)
+    ) {
+    throw new Error(
+        "Invalid order total."
+    );
     }
 
-    const newTotal = sum + itemTotalCents;
+    const newTotal =
+    sum + itemTotalCents;
 
     if (!Number.isSafeInteger(newTotal)) {
-    throw new Error("Invalid order total.");
+    throw new Error(
+        "Invalid order total."
+    );
     }
 
     return newTotal;
@@ -136,26 +198,41 @@ const totalCents = verifiedItems.reduce(
 
 const total = totalCents / 100;
 
-if (!Number.isFinite(total) || total < 0) {
-throw new Error("Invalid order total.");
+if (
+!Number.isFinite(total) ||
+total < 0
+) {
+throw new Error(
+    "Invalid order total."
+);
 }
 
 const order: Order = {
-id: crypto.randomUUID(),
+id: createDeterministicOrderId(
+    userId,
+    validIdempotencyKey
+),
 userId,
 
 customer: {
     name: validCustomer.name.trim(),
-    email: validCustomer.email.trim().toLowerCase(),
-    address: validCustomer.address.trim(),
-    city: validCustomer.city.trim(),
-    postal: validCustomer.postal.trim(),
+    email:
+    validCustomer.email
+        .trim()
+        .toLowerCase(),
+    address:
+    validCustomer.address.trim(),
+    city:
+    validCustomer.city.trim(),
+    postal:
+    validCustomer.postal.trim(),
 },
 
 items: verifiedItems,
 total,
 status: "pending",
-createdAt: new Date().toISOString(),
+createdAt:
+    new Date().toISOString(),
 };
 
 return createOrderAndClearCart(order);

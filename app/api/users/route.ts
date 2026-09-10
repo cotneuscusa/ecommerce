@@ -1,10 +1,8 @@
-import bcrypt from "bcryptjs";
-import {
-createUser,
-getUserById,
-} from "@/lib/repositories/users";
+import { createUserFromInput } from "@/lib/services/user-service";
 
-export async function POST(request: Request) {
+export async function POST(
+request: Request
+) {
 try {
 let body: unknown;
 
@@ -12,14 +10,21 @@ try {
     body = await request.json();
 } catch {
     return Response.json(
-    { error: "Invalid JSON." },
+    {
+        error: "Invalid JSON.",
+    },
     { status: 400 }
     );
 }
 
-if (!body || typeof body !== "object") {
+if (
+    !body ||
+    typeof body !== "object"
+) {
     return Response.json(
-    { error: "Invalid request data." },
+    {
+        error: "Invalid request data.",
+    },
     { status: 400 }
     );
 }
@@ -32,12 +37,12 @@ const data = body as {
 
 const email =
     typeof data.email === "string"
-    ? data.email.trim().toLowerCase()
+    ? data.email
     : "";
 
 const name =
     typeof data.name === "string"
-    ? data.name.trim()
+    ? data.name
     : "";
 
 const password =
@@ -45,62 +50,17 @@ const password =
     ? data.password
     : "";
 
-if (!email || !name || !password) {
-    return Response.json(
-    {
-        error: "Name, email, and password are required.",
-    },
-    { status: 400 }
-    );
-}
-
-const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-if (!emailPattern.test(email)) {
-    return Response.json(
-    { error: "Please provide a valid email address." },
-    { status: 400 }
-    );
-}
-
-if (password.length < 8) {
-    return Response.json(
-    {
-        error: "Password must be at least 8 characters.",
-    },
-    { status: 400 }
-    );
-}
-
-const existingUser = await getUserById(email);
-
-if (existingUser) {
-    return Response.json(
-    {
-        error: "A user with this email already exists.",
-    },
-    { status: 409 }
-    );
-}
-
-const passwordHash = await bcrypt.hash(
-    password,
-    12
-);
-
-const user = {
-    id: email,
+const createdUser =
+    await createUserFromInput({
     email,
     name,
-    passwordHash,
-    role: "user" as const,
-};
-
-const createdUser = await createUser(user);
+    password,
+    });
 
 return Response.json(
     {
-    message: "User created successfully.",
+    message:
+        "User created successfully.",
     user: {
         id: createdUser.id,
         email: createdUser.email,
@@ -110,22 +70,79 @@ return Response.json(
     { status: 201 }
 );
 } catch (error) {
-if (
-    error instanceof Error &&
-    error.name === "ConditionalCheckFailedException"
-) {
+if (error instanceof Error) {
+    if (
+    error.message ===
+    "Name, email, and password are required."
+    ) {
     return Response.json(
-    {
-        error: "A user with this email already exists.",
-    },
-    { status: 409 }
+        {
+        error: error.message,
+        },
+        { status: 400 }
     );
+    }
+
+    if (
+    error.message ===
+    "Please provide a valid email address."
+    ) {
+    return Response.json(
+        {
+        error: error.message,
+        },
+        { status: 400 }
+    );
+    }
+
+    if (
+    error.message ===
+    "Password must be at least 8 characters."
+    ) {
+    return Response.json(
+        {
+        error: error.message,
+        },
+        { status: 400 }
+    );
+    }
+
+    if (
+    error.message ===
+    "A user with this email already exists."
+    ) {
+    return Response.json(
+        {
+        error: error.message,
+        },
+        { status: 409 }
+    );
+    }
+
+    if (
+    error.name ===
+    "ConditionalCheckFailedException"
+    ) {
+    return Response.json(
+        {
+        error:
+            "A user with this email already exists.",
+        },
+        { status: 409 }
+    );
+    }
 }
 
-console.error("User creation error:", error);
+console.error(
+    "User creation error:",
+    error
+);
 
 return Response.json(
-    { error: "Failed to create user." },
+    {
+    error:
+        "Failed to create user.",
+    },
     { status: 500 }
 );
 }

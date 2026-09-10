@@ -4,14 +4,17 @@ import { createOrderFromCart } from "@/lib/services/order-service";
 
 import { orderSchema } from "@/lib/validation/order-schema";
 
-export async function POST(request: Request) {
+export async function POST(
+request: Request
+) {
 try {
 const session = await auth();
 
 if (!session?.user?.id) {
     return Response.json(
     {
-        error: "You must be logged in to place an order.",
+        error:
+        "You must be logged in to place an order.",
     },
     { status: 401 }
     );
@@ -24,76 +27,130 @@ try {
 } catch {
     return Response.json(
     {
-        error: "Invalid JSON request body.",
+        error:
+        "Invalid JSON request body.",
     },
     { status: 400 }
     );
 }
 
-const validation = orderSchema.safeParse(body);
+const validation =
+    orderSchema.safeParse(body);
 
 if (!validation.success) {
     return Response.json(
     {
-        error: "Invalid order information.",
-        details: validation.error.flatten(),
+        error:
+        "Invalid order information.",
+        details:
+        validation.error.flatten(),
     },
     { status: 400 }
     );
 }
 
-const order = await createOrderFromCart({
+const order =
+    await createOrderFromCart({
     userId: session.user.id,
-    customer: validation.data.customer,
-});
+    customer:
+        validation.data.customer,
+    idempotencyKey:
+        validation.data.idempotencyKey,
+    });
 
 return Response.json(
     {
-    message: "Order created successfully.",
+    message:
+        "Order created successfully.",
     order,
     },
     { status: 201 }
 );
 } catch (error) {
 if (error instanceof Error) {
-    if (error.message === "Your cart is empty.") {
+    if (
+    error.message ===
+    "Your cart is empty."
+    ) {
     return Response.json(
         { error: error.message },
         { status: 400 }
     );
     }
 
-    if (error.message.includes("was not found.")) {
+    if (
+    error.message.includes(
+        "was not found."
+    )
+    ) {
     return Response.json(
-        { error: "One or more products in your cart are unavailable." },
+        {
+        error:
+            "One or more products in your cart are unavailable.",
+        },
         { status: 400 }
     );
     }
 
-    if (error.message === "Invalid product price.") {
-    console.error("Invalid product price:", error);
+    if (
+    error.message ===
+    "Invalid product price."
+    ) {
+    console.error(
+        "Invalid product price:",
+        error
+    );
 
     return Response.json(
-        { error: "Failed to create order." },
+        {
+        error:
+            "Failed to create order.",
+        },
         { status: 500 }
     );
     }
 
-    if (error.message === "Invalid order total.") {
-    console.error("Invalid order total:", error);
+    if (
+    error.message ===
+    "Invalid order total."
+    ) {
+    console.error(
+        "Invalid order total:",
+        error
+    );
 
     return Response.json(
-        { error: "Failed to create order." },
+        {
+        error:
+            "Failed to create order.",
+        },
         { status: 500 }
+    );
+    }
+
+    if (
+    error.message ===
+    "Invalid checkout request."
+    ) {
+    return Response.json(
+        {
+        error:
+            "Invalid checkout request.",
+        },
+        { status: 400 }
     );
     }
 }
 
-console.error("Order creation error:", error);
+console.error(
+    "Order creation error:",
+    error
+);
 
 return Response.json(
     {
-    error: "Failed to create order.",
+    error:
+        "Failed to create order.",
     },
     { status: 500 }
 );

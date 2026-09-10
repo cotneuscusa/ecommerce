@@ -1,16 +1,10 @@
 import { auth } from "@/auth";
 
 import {
-getCart,
-saveCart,
-clearCart,
-} from "@/lib/repositories/cart";
-
-import { getProductById } from "@/lib/repositories/products";
-
-import type { Product } from "@/lib/types";
-
-const MAX_ITEM_QUANTITY = 100;
+getUserCart,
+saveUserCart,
+clearUserCart,
+} from "@/lib/services/cart-api-service";
 
 export async function GET() {
 try {
@@ -18,31 +12,41 @@ const session = await auth();
 
 if (!session?.user?.id) {
     return Response.json(
-    { error: "You must be logged in." },
+    {
+        error: "You must be logged in.",
+    },
     { status: 401 }
     );
 }
 
-const items = await getCart(session.user.id);
+const items = await getUserCart(
+    session.user.id
+);
 
-return Response.json(items);
+return Response.json({ items });
 } catch (error) {
 console.error("Cart GET error:", error);
 
 return Response.json(
-    { error: "Failed to load cart." },
+    {
+    error: "Failed to load cart.",
+    },
     { status: 500 }
 );
 }
 }
 
-export async function PUT(request: Request) {
+export async function PUT(
+request: Request
+) {
 try {
 const session = await auth();
 
 if (!session?.user?.id) {
     return Response.json(
-    { error: "You must be logged in." },
+    {
+        error: "You must be logged in.",
+    },
     { status: 401 }
     );
 }
@@ -53,7 +57,9 @@ try {
     body = await request.json();
 } catch {
     return Response.json(
-    { error: "Invalid JSON." },
+    {
+        error: "Invalid JSON request body.",
+    },
     { status: 400 }
     );
 }
@@ -61,125 +67,60 @@ try {
 if (
     !body ||
     typeof body !== "object" ||
-    !("items" in body) ||
-    !Array.isArray(body.items)
+    !Array.isArray(
+    (body as { items?: unknown }).items
+    )
 ) {
     return Response.json(
-    { error: "Invalid cart data." },
+    {
+        error: "Invalid cart information.",
+    },
     { status: 400 }
     );
 }
 
-const items = body.items;
-
-const productIds = new Set<number>();
-
-const savedItems: {
-    product: Product;
-    quantity: number;
-}[] = [];
-
-for (const item of items) {
-    if (
-    !item ||
-    typeof item !== "object" ||
-    !("product" in item) ||
-    !item.product ||
-    typeof item.product !== "object" ||
-    !("quantity" in item) ||
-    typeof item.quantity !== "number" ||
-    !Number.isInteger(item.quantity) ||
-    item.quantity <= 0 ||
-    item.quantity > MAX_ITEM_QUANTITY
-    ) {
-    return Response.json(
-        { error: "Invalid cart item." },
-        { status: 400 }
-    );
+const items = (
+    body as {
+    items: unknown[];
     }
+).items;
 
-    const product = item.product;
-
-    if (
-    !("id" in product) ||
-    typeof product.id !== "number" ||
-    !Number.isInteger(product.id) ||
-    product.id <= 0 ||
-    productIds.has(product.id)
-    ) {
-    return Response.json(
-        { error: "Invalid cart item." },
-        { status: 400 }
-    );
-    }
-
-    productIds.add(product.id);
-
-    const databaseProduct = await getProductById(
-    String(product.id)
-    );
-
-    if (!databaseProduct) {
-    return Response.json(
-        {
-        error: "One or more products in your cart are unavailable.",
-        },
-        { status: 400 }
-    );
-    }
-
-    const databaseProductId = Number(databaseProduct.id);
-    const databasePrice = Number(databaseProduct.price);
-
-    if (
-    !Number.isInteger(databaseProductId) ||
-    databaseProductId <= 0 ||
-    !Number.isFinite(databasePrice) ||
-    databasePrice < 0 ||
-    typeof databaseProduct.name !== "string" ||
-    databaseProduct.name.trim() === "" ||
-    typeof databaseProduct.description !== "string" ||
-    databaseProduct.description.trim() === "" ||
-    typeof databaseProduct.image !== "string" ||
-    databaseProduct.image.trim() === "" ||
-    typeof databaseProduct.category !== "string" ||
-    databaseProduct.category.trim() === ""
-    ) {
-    console.error(
-        "Invalid product data in database:",
-        databaseProduct
-    );
-
-    return Response.json(
-        { error: "Failed to save cart." },
-        { status: 500 }
-    );
-    }
-
-    savedItems.push({
-    product: {
-        id: databaseProductId,
-        name: databaseProduct.name,
-        description: databaseProduct.description,
-        price: databasePrice,
-        image: databaseProduct.image,
-        category: databaseProduct.category,
-    },
-    quantity: item.quantity,
-    });
-}
-
-const result = await saveCart(
+const savedItems = await saveUserCart(
     session.user.id,
-    savedItems
+    items as never[]
 );
 
-return Response.json(result);
+return Response.json({
+    items: savedItems,
+});
 } catch (error) {
+if (error instanceof Error) {
+    if (
+    error.message ===
+    "Your cart contains too many items."
+    ) {
+    return Response.json(
+        { error: error.message },
+        { status: 400 }
+    );
+    }
+
+    if (
+    error.message === "Invalid cart item."
+    ) {
+    return Response.json(
+        { error: error.message },
+        { status: 400 }
+    );
+    }
+}
+
 console.error("Cart PUT error:", error);
 
 return Response.json(
-    { error: "Failed to save cart." },
+    {
+    error: "Failed to update cart.",
+    },
     { status: 500 }
 );
 }
@@ -191,19 +132,30 @@ const session = await auth();
 
 if (!session?.user?.id) {
     return Response.json(
-    { error: "You must be logged in." },
+    {
+        error: "You must be logged in.",
+    },
     { status: 401 }
     );
 }
 
-await clearCart(session.user.id);
+await clearUserCart(
+    session.user.id
+);
 
-return Response.json([]);
+return Response.json({
+    message: "Cart cleared successfully.",
+});
 } catch (error) {
-console.error("Cart DELETE error:", error);
+console.error(
+    "Cart DELETE error:",
+    error
+);
 
 return Response.json(
-    { error: "Failed to clear cart." },
+    {
+    error: "Failed to clear cart.",
+    },
     { status: 500 }
 );
 }

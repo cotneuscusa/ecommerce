@@ -8,4 +8,10 @@ address: z.string().trim().min(1),
 city: z.string().trim().min(1),
 postal: z.string().trim().min(1),
 }),
+
+idempotencyKey: z
+.string()
+.trim()
+.min(1)
+.max(200),
 });
